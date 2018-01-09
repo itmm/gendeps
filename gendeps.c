@@ -62,6 +62,11 @@ static inline bool parse_file(node_t *node) {
 	printf("%s:", node->path_begin);
 
 	FILE *in = fopen(node->path_begin, "r");
+	if (! in) {
+		ERR("can't open file \"%s\"", node->path_begin);
+		return false;
+	}
+
 	int ch = getc(in);
 	while (ch != EOF) {
 		while (ch != EOF && ch <= ' ') { ch = getc(in); } // whitespace at begin of line
@@ -80,11 +85,19 @@ static inline bool parse_file(node_t *node) {
 			const char *end = path + sizeof(path);
 
 			while (ch != EOF && ch != '"' && ch > ' ') {
-				if (cur == end) { ERR("\nname longer than %d bytes", BUFFER_SIZE); return false; }
+				if (cur == end) { 
+					ERR("\nname longer than %d bytes", BUFFER_SIZE);
+					fclose(in);
+					return false; 
+				}
 				*cur++ = ch;
 				ch = getc(in);
 			}
-			if (ch != '"') { ERR("invalid include statement"); return false; }
+			if (ch != '"') { 
+				ERR("invalid include statement");
+				fclose(in);
+				return false;
+			}
 
 			ch = getc(in);
 			int count = 0;
@@ -103,6 +116,9 @@ static inline bool parse_file(node_t *node) {
 		while (ch != EOF && ch != '\n' && ch != '\r') { ch = getc(in); } // eat rest of line
 	}
 	putchar('\n');
+
+	fclose(in);
+
 	return true;
 }
 
