@@ -1,0 +1,27 @@
+CFLAGS += -Wall -std=c11
+
+C_FILES = $(wildcard *.c)
+H_FILES = $(wildcard *.h)
+O_APPS = $(APPS:=.o)
+O_FILES = $(filter-out $(O_APPS), $(C_FILES:.c=.o))
+SOURCES = $(C_FILES) $(H_FILES)
+TEST_APPS = $(filter t_%,$(APPS))
+TEST_TARGETS = $(TEST_APPS:=.tests)
+
+.PHONY: $(TEST_TARGETS)
+
+test: $(TEST_TARGETS)
+$(TEST_TARGETS): $(TEST_APPS)
+	@./$(@:.tests=)
+
+$(APPS): $(O_FILES)
+
+%:%.o
+
+$(SOURCES):
+	@touch $@
+
+.PHONY: clean
+clean:
+	@rm -f $(O_FILES) $(O_APPS) $(APPS)
+
