@@ -56,16 +56,47 @@ static inline bool has_suffix(
 	return false;
 }
 
+static inline int eat_rest_of_line(FILE *in, char ch) {
+	while (ch != EOF && ch != '\n' && ch != '\r') { ch = getc(in); }
+	return ch;
+}
+
+static inline char parse_include_path(FILE *in, const char *source) {
+	char path[BUFFER_SIZE];
+	char *cur = path;
+	const char *end = path + sizeof(path);
+
+	char ch = getc(in);
+
+	while (ch != EOF && ch != '"' && ch > ' ') {
+		if (cur == end) { ERR("name longer than %d bytes", BUFFER_SIZE); return EOF; }
+		*cur++ = ch;
+		ch = getc(in);
+	}
+	if (ch != '"') { ERR("invalid include statement"); return EOF; }
+
+	ch = getc(in);
+	int count = 0;
+	for (node_t *node = last_node; node; node = node->link) {
+		if (has_suffix(node->path_begin, node->path_end, path, cur)) {
+			printf(" %s", node->path_begin);
+			if (++count == 2) {
+				WARN("multiple sources found for \"%.*s\"", (int) (cur - path), path);
+			}
+		}
+	}
+	if (! count) { WARN("no file for \"%.*s\" in \"%s\" found", (int) (cur - path), path, source); }
+
+	return ch;
+}
+
 static inline bool parse_file(node_t *node) {
 	assert(node);
 
 	printf("%s:", node->path_begin);
 
 	FILE *in = fopen(node->path_begin, "r");
-	if (! in) {
-		ERR("can't open file \"%s\"", node->path_begin);
-		return false;
-	}
+	if (! in) { ERR("can't open file \"%s\"", node->path_begin); return false; }
 
 	int ch = getc(in);
 	while (ch != EOF) {
@@ -73,47 +104,18 @@ static inline bool parse_file(node_t *node) {
 
 		const char *include_pattern = "#include";
 		while (*include_pattern && ch == *include_pattern) { ch = getc(in); ++include_pattern; }
-		int spaces_counted = 0;
-		if (! *include_pattern) {
+		bool pattern_found = ! *include_pattern;
+
+		if (pattern_found) {
+			int spaces_counted = 0;
 			while (ch != EOF && ch <= ' ') { ++spaces_counted; ch = getc(in); }
-		}
-		if (spaces_counted >= 1 && ch == '"') {
-			ch = getc(in);
 
-			char path[BUFFER_SIZE];
-			char *cur = path;
-			const char *end = path + sizeof(path);
-
-			while (ch != EOF && ch != '"' && ch > ' ') {
-				if (cur == end) { 
-					ERR("\nname longer than %d bytes", BUFFER_SIZE);
-					fclose(in);
-					return false; 
-				}
-				*cur++ = ch;
-				ch = getc(in);
-			}
-			if (ch != '"') { 
-				ERR("invalid include statement");
-				fclose(in);
-				return false;
-			}
-
-			ch = getc(in);
-			int count = 0;
-			for (node_t *node = last_node; node; node = node->link) {
-				if (has_suffix(node->path_begin, node->path_end, path, cur)) {
-					printf(" %s", node->path_begin);
-					if (++count == 2) {
-						WARN("multiple sources found for \"%*s\"", (int) (cur - path), path);
-					}
-				}
-			}
-			if (! count) { 
-				WARN("no file for \"%*s\" found", (int) (cur - path), path); 
+			if (spaces_counted >= 1 && ch == '"') {
+				ch = parse_include_path(in, node->path_begin);
 			}
 		}
-		while (ch != EOF && ch != '\n' && ch != '\r') { ch = getc(in); } // eat rest of line
+
+		ch = eat_rest_of_line(in, ch);
 	}
 	putchar('\n');
 
@@ -144,7 +146,7 @@ int main(int argc, char *argv[]) {
 			}
 		}
 		for (node_t *cur = last_node; cur; cur = cur->link) {
-			if (!parse_file(cur)) { 
+			if (! parse_file(cur)) { 
 				ERR("errors while parsing \"%s\"", cur->path_begin);
 				exit(10);
 			}
